@@ -6,8 +6,11 @@ The link must point to the exact statement URL, carry the exact text
 "הצהרת נגישות", and have no target attribute. The widget is the inline
 `window.interdeal` config plus the loader that reads `interdeal.domains.js`
 (served from cdn.equalweb.com); each marker must appear exactly once.
+It also fails if a CSS rule whose selector names a `.footer` class sets `opacity`:
+opacity dims footer text below the 4.5:1 WCAG AA contrast.
 Run from the repo root.
 """
+import re
 import sys
 from html.parser import HTMLParser
 
@@ -36,6 +39,19 @@ class Collector(HTMLParser):
             self._open = None
 
 
+def footer_opacity_problems(source):
+    """Return one problem per CSS rule naming a `.footer` class that sets opacity."""
+    css = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", source, re.S | re.I))
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    problems = []
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        if ".footer" not in selector:
+            continue
+        if re.search(r"(?:^|;)\s*opacity\s*:", body.strip(), re.I):
+            problems.append("CSS rule %r sets opacity, which dims footer text below 4.5:1 contrast" % " ".join(selector.split()))
+    return problems
+
+
 def main():
     with open("index.html", encoding="utf-8") as f:
         source = f.read()
@@ -54,6 +70,7 @@ def main():
         found = source.count(marker)
         if found != 1:
             problems.append("expected exactly 1 occurrence of %r (EqualWeb widget), found %d" % (marker, found))
+    problems.extend(footer_opacity_problems(source))
     if problems:
         for p in problems:
             print("check-a11y-link: FAIL - " + p)
